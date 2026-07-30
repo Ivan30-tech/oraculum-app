@@ -92,6 +92,9 @@ button{font-family:inherit; color:inherit;}
 }
 .chip.hot{border-color:#7a4033; color:#e79a72; background:linear-gradient(180deg,#2a1a1c,#1c1218);}
 .chip.spark{color:#9fd7ff; border-color:#2f4a63;}
+/* Все три показателя в шапке нажимаются и объясняют себя — курсор это показывает */
+.chip.hot,.chip.spark{cursor:pointer;}
+.chip:active{transform:scale(.94);}
 .lvl-ring{width:34px; height:34px; flex:none; cursor:pointer;}
 .lvl-ring text{font-family:'JetBrains Mono',monospace; font-size:11px; fill:var(--gold); text-anchor:middle;}
 
@@ -145,6 +148,24 @@ input[type=text],input[type=date],input[type=time],textarea,select{
 input:focus,textarea:focus{border-color:var(--brass-soft); box-shadow:0 0 0 3px rgba(201,162,75,.08);}
 input::placeholder,textarea::placeholder{color:#585b70;}
 textarea{resize:none; min-height:66px;}
+
+/* Дата рождения тремя списками вместо <input type=date>. Нативный календарь
+   Android WebView внутри Telegram открывается на текущем месяце и переключает
+   его по одной штуке: чтобы дойти до 1998 года, нужно около 340 нажатий на «‹».
+   Выбор года там не вынесен наружу, поэтому поле для даты рождения было
+   практически непроходимым. Три <select> раскрываются нативным списком —
+   год выбирается одним движением. color-scheme:dark нужен, чтобы системный
+   список открывался тёмным, а не белым поверх тёмного интерфейса. */
+.dsel{display:flex; gap:8px; margin-bottom:12px;}
+.dsel select{
+  margin-bottom:0; min-width:0; color-scheme:dark;
+  padding:12px 8px; text-align:center; text-align-last:center;
+}
+.dsel select[data-p="d"]{flex:0 0 76px;}
+.dsel select[data-p="m"]{flex:1;}
+.dsel select[data-p="y"]{flex:0 0 92px;}
+.dsel select:disabled{opacity:.5;}
+.dsel select:focus{border-color:var(--brass-soft); box-shadow:0 0 0 3px rgba(201,162,75,.08);}
 .btn{
   width:100%; border:none; border-radius:12px; padding:14px 16px;
   font-weight:600; font-size:14.5px; cursor:pointer;
@@ -658,9 +679,12 @@ function initTelegram(){
   tgSafe(()=>TG.ready());              // сообщить клиенту, что интерфейс готов
   tgSafe(()=>TG.expand());             // развернуть на всю высоту
 
-  /* КРИТИЧНО для главной механики: вертикальный свайп внутри Mini App по
-     умолчанию сворачивает приложение. Пользователь тянет карты из веера
-     движением вниз — без этой строки он закрывает приложение вместо расклада. */
+  /* Вертикальный свайп внутри Mini App по умолчанию сворачивает приложение,
+     а экраны здесь длинные и листаются постоянно — без этой строки прокрутка
+     веера карт или истории то и дело закрывает приложение.
+     Карты при этом выбираются касанием, а не вытягиванием (см. fanHint): в
+     прежней редакции комментария была обещана механика перетаскивания, которой
+     в коде нет, и по ней легко построить неверный сценарий проверки. */
   if(TG_CAN.swipes) tgSafe(()=>TG.disableVerticalSwipes());
 
   /* Шапка и фон клиента в цвет приложения, иначе поверх тёмного интерфейса
@@ -966,6 +990,13 @@ function tarotCardHTML(key, opts){
    3) лимит запросов на пользователя и потолок max_tokens — на сервере, а не в этом файле;
    4) клиентское состояние (подписка, лимиты, искры) сервер не принимает на веру. */
 window.ORACULUM = window.ORACULUM || { endpoint:'', model:'claude-sonnet-5' };
+
+/* Username бота — одной константой. Раньше он был вписан руками в двух местах
+   (приглашение друга и кнопка «Поделиться»), причём в обоих указывал на
+   @oraculum_bot — чужого бота, который нам не принадлежит. То есть каждое
+   приглашение и каждый расклад, отправленный другу, уводили человека не к нам.
+   Менять username бота теперь можно только здесь. */
+const BOT = 'Oraculum_app_bot';
 
 const FOCUS = {
   love:  {n:'Отношения', ic:'♡', a:['в близости','в отношениях','в паре'],
@@ -1382,6 +1413,86 @@ function sealSVG(sym){
   </svg><div class="seal-core">${sym||'✦'}</div>`;
 }
 
+/* ======================== ВЫБОР ДАТЫ РОЖДЕНИЯ ========================
+   Заменяет <input type="date">: см. комментарий к .dsel в стилях о том, почему
+   нативный календарь Android не годится для года рождения.
+   Формат значения снаружи не меняется — по-прежнему 'ГГГГ-ММ-ДД', поэтому
+   zodiac(), lifePath() и всё остальное продолжают работать без правок. */
+const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь',
+                   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+/* Сколько дней в месяце. День 0 следующего месяца — это последний день текущего;
+   заодно бесплатно получаем 29 февраля в высокосных годах. */
+function daysInMonth(y, m){
+  if(!m) return 31;                       // месяц не выбран — показываем максимум
+  if(!y) return m===2 ? 29 : [4,6,9,11].includes(m) ? 30 : 31;
+  return new Date(y, m, 0).getDate();
+}
+
+function dateSelects(id, value, opts){
+  opts = opts || {};
+  const p = String(value||'').split('-');
+  const vy = +p[0] || 0, vm = +p[1] || 0, vd = +p[2] || 0;
+  const nowY = new Date().getFullYear();
+  const dis = opts.disabled ? ' disabled' : '';
+  const o = (v, label, sel) => `<option value="${v}"${sel?' selected':''}>${label}</option>`;
+
+  let days = o('', 'дн', !vd);
+  for(let d=1; d<=daysInMonth(vy, vm); d++) days += o(d, d, d===vd);
+
+  let months = o('', 'месяц', !vm);
+  MONTHS_RU.forEach((nm, i) => { months += o(i+1, nm, i+1===vm); });
+
+  /* Годы от свежих к старым: 25-летний доскроллит до своего за секунду, а не
+     будет пролетать через весь двадцатый век. Нижняя граница — 100 лет назад. */
+  let years = o('', 'год', !vy);
+  for(let y=nowY-5; y>=nowY-100; y--) years += o(y, y, y===vy);
+
+  return `<div class="dsel" id="${id}">
+    <select data-p="d" aria-label="День"${dis}>${days}</select>
+    <select data-p="m" aria-label="Месяц"${dis}>${months}</select>
+    <select data-p="y" aria-label="Год"${dis}>${years}</select>
+  </div>`;
+}
+
+/* onChange получает либо полную дату 'ГГГГ-ММ-ДД', либо '' — если выбрано не всё.
+   Вызывающий код сам решает, перерисовывать ли интерфейс: в онбординге по полной
+   дате сразу показывается знак и число пути. */
+function wireDateSelects(id, onChange){
+  const wrap = document.getElementById(id);
+  if(!wrap) return;
+  const sel = k => wrap.querySelector(`[data-p="${k}"]`);
+  const d = sel('d'), m = sel('m'), y = sel('y');
+
+  const sync = ()=>{
+    /* Список дней подрезается под выбранный месяц: иначе можно оставить 31-е,
+       переключиться на февраль и получить несуществующую дату, которую
+       new Date() молча превратит в 3 марта. */
+    const max = daysInMonth(+y.value, +m.value);
+    const keep = Math.min(+d.value || 0, max);
+    if(d.options.length - 1 !== max || +d.value > max){
+      let html = `<option value=""${keep?'':' selected'}>дн</option>`;
+      for(let i=1; i<=max; i++) html += `<option value="${i}"${i===keep?' selected':''}>${i}</option>`;
+      d.innerHTML = html;
+    }
+    const full = d.value && m.value && y.value;
+    onChange(full ? `${y.value}-${String(m.value).padStart(2,'0')}-${String(d.value).padStart(2,'0')}` : '');
+  };
+
+  [d, m, y].forEach(el => { el.onchange = ()=>{ haptic('light'); sync(); }; });
+}
+
+/* Считать дату из группы списков. Заменяет прежнее .value у <input type="date">:
+   у контейнера из трёх <select> такого свойства нет, и обращение к нему молча
+   давало undefined — то есть проверка «дата не указана» никогда не срабатывала. */
+function readDateSelects(id){
+  const wrap = document.getElementById(id);
+  if(!wrap) return '';
+  const v = k => (wrap.querySelector(`[data-p="${k}"]`)||{}).value || '';
+  const d = v('d'), m = v('m'), y = v('y');
+  return (d && m && y) ? `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}` : '';
+}
+
 function obView(){
   const step = S.step;
   const dots = Array.from({length:4}).map((_,i)=>`<i class="${i<=step?'on':''}"></i>`).join('');
@@ -1411,14 +1522,7 @@ function obView(){
     body = `
       <h2>Когда ты <em>пришёл(ла)</em> в этот мир?</h2>
       <p class="lead">Дата рождения задаёт узор: знак, стихию и число жизненного пути. Считаем сразу — бесплатно.</p>
-      <!-- Два независимых источника того же бага на Android WebView (Telegram):
-           1) отсутствие min — без нижней границы браузер не может нормально
-              накапливать цифры года при ручном вводе, показывает «0001», «0002»;
-           2) value="" (пустая строка) — невалидное значение поля, в отличие от
-              полного отсутствия атрибута; выставляется, только если дата уже
-              выбрана. Поле совместимости не ломалось именно потому, что value
-              там не задавался вовсе, пока пользователь не введёт дату сам. -->
-      <input type="date" id="obDate" ${S.birth?`value="${S.birth}"`:''} min="1900-01-01" max="${new Date().toISOString().slice(0,10)}">
+      ${dateSelects('obDate', S.birth)}
       <div id="obDateHint">${z ? `
         <div class="mini-grid">
           <div class="mini"><div class="ml">Знак</div><div class="mv">${z.s} ${z.n}</div><div class="mx">${ELEMENT[z.el].n}</div></div>
@@ -1469,7 +1573,7 @@ function shell(){
     </div>
     <div class="hud">
       <div class="chip spark" id="sparkChip">✧ ${S.sparks}</div>
-      <div class="chip hot">🔥 ${S.streak.count}</div>
+      <div class="chip hot" id="streakChip">🔥 ${S.streak.count}</div>
       <svg class="lvl-ring" viewBox="0 0 34 34" id="lvlRing">
         <circle cx="17" cy="17" r="14" fill="none" stroke="#2e3247" stroke-width="3"/>
         <circle cx="17" cy="17" r="14" fill="none" stroke="#c9a24b" stroke-width="3" stroke-linecap="round"
@@ -1731,9 +1835,9 @@ function matchView(){
   <p class="sub">Твоя дата уже есть. Добавь дату второго человека — посчитаем стихии, числа и точки трения.</p>
   <div class="card">
     <label>Твоя дата</label>
-    <input type="date" value="${S.birth}" disabled>
+    ${dateSelects('ownDate', S.birth, {disabled:true})}
     <label>Дата второго человека</label>
-    <input type="date" id="matchDate" min="1900-01-01" max="${new Date().toISOString().slice(0,10)}">
+    ${dateSelects('matchDate', '')}
     <label>Имя (по желанию)</label>
     <input type="text" id="matchName" placeholder="Как зовут?">
     <button class="btn btn-primary" id="runMatch">Посчитать совместимость</button>
@@ -1940,8 +2044,36 @@ function profileView(){
     ${S.src?`<div class="card-note" style="border-top:1px solid var(--line-soft); padding-top:10px">
       Источник захода: <span class="gold">${esc(S.src)}</span> — по этой метке считается конверсия из уведомления</div>`:''}
   </div>
+  ${diagCard()}
   <button class="btn btn-ghost btn-sm" id="reset" style="width:100%; margin-bottom:10px; color:var(--dim-2)">Сбросить демо-профиль</button>
   <div class="disc">Демонстрационный прототип. Оплата, уведомления и авторизация в реальном приложении идут через Telegram Bot API и Stars.</div>`;
+}
+
+/* Диагностика окружения. Нужна из-за жалобы «вибрация не работает»: код вызывает
+   HapticFeedback в нужных местах, но сработает он только если (1) приложение
+   открыто внутри Telegram, (2) версия клиента не ниже 6.1 и (3) вибрация не
+   отключена в системных настройках телефона — на Xiaomi и Redmi «Вибрация при
+   касании» выключена по умолчанию. Различить эти три причины со стороны кода
+   нельзя, поэтому показываем факты и даём кнопку проверки: если версия и
+   поддержка в порядке, а вибрации нет — дело в настройках телефона. */
+function diagCard(){
+  const val = (ok, txt) => `<span style="color:${ok?'var(--ok)':'var(--crimson)'}">${txt}</span>`;
+  let ver = '—', plat = '—';
+  try{ ver = (TG && TG.version) || '—'; plat = (TG && TG.platform) || '—'; }catch(e){}
+  const rows = [
+    ['Окружение', IN_TG ? val(true,'Telegram') : val(false,'браузер (вне Telegram)')],
+    ['Платформа · версия', `${esc(plat)} · ${esc(ver)}`],
+    ['Вибрация (API)', TG_CAN.haptic ? val(true,'поддерживается') : val(false,'нет, нужен клиент 6.1+')],
+    ['Свайпы заблокированы', TG_CAN.swipes ? val(true,'да') : val(false,'нет, нужен клиент 7.7+')],
+    ['Часовой пояс', esc(tzLabel())],
+  ];
+  return `
+  <div class="card">
+    <div class="card-h"><div class="card-t">Диагностика</div><div class="card-note">для отладки</div></div>
+    ${rows.map(([k,v])=>`<div class="prow"><div class="pt"><b style="font-weight:500">${k}</b></div>
+      <div style="font-family:'JetBrains Mono',monospace; font-size:11px; text-align:right">${v}</div></div>`).join('')}
+    <button class="btn btn-ghost btn-sm" id="hapticTest" style="width:100%; margin-top:10px">Проверить вибрацию</button>
+  </div>`;
 }
 
 /* ==========================================================================
@@ -1999,11 +2131,17 @@ function wireOb(){
         S.name.trim().length>=2 && nn ? instantCard('Число имени', nn, `«${numInfo(nn).t}» — так тебя читают снаружи: ${numInfo(nn).k}.`) : '';
       next.disabled = S.name.trim().length<2;
     };
+    wireEnterDone(inp);
     setTimeout(()=>inp.focus(), 120);
   }
   if(S.step===2){
-    const inp = document.getElementById('obDate');
-    inp.onchange = ()=>{ S.birth = inp.value; save(); render(); };
+    /* render() только когда дата собрана целиком: перерисовка на каждом из трёх
+       списков сбрасывала бы уже выбранное и не давала дозаполнить остальное. */
+    wireDateSelects('obDate', v=>{
+      S.birth = v; save();
+      if(v) render();
+      else next.disabled = true;
+    });
   }
   if(S.step===3){
     document.getElementById('obFocus').querySelectorAll('.pill').forEach(p=>{
@@ -2036,12 +2174,34 @@ function wire(){
   document.querySelectorAll('[data-pay]').forEach(b=>b.onclick = ()=>openPaywall('plans'));
   document.querySelectorAll('[data-live]').forEach(b=>b.onclick = openLive);
 
-  const ring = document.getElementById('lvlRing');
-  if(ring) ring.onclick = ()=>go('profile');
+  /* Все три показателя в шапке объясняют себя по касанию. До этого пояснение
+     было только у искр: чип серии не реагировал вообще, а кольцо уровня молча
+     уводило в профиль — куда и так ведёт кнопка в нижней панели. Непонятный
+     счётчик, который нельзя ни нажать, ни расспросить, читается как украшение. */
   const spark = document.getElementById('sparkChip');
-  if(spark) spark.onclick = ()=>toast(isPremium()
+  if(spark) spark.onclick = ()=>{ haptic('light'); toast(isPremium()
     ? `Искры — внутренняя валюта. С подпиской разборы уже безлимитны, но ✧${FREEZE_COST} = страховка серии на карточке дня.`
-    : `Искры — внутренняя валюта. ✧${SPARK_COST} = один глубокий разбор без подписки, ✧${FREEZE_COST} = страховка серии.`, '✧');
+    : `Искры — внутренняя валюта. ✧${SPARK_COST} = один глубокий разбор без подписки, ✧${FREEZE_COST} = страховка серии.`, '✧'); };
+
+  const streak = document.getElementById('streakChip');
+  if(streak) streak.onclick = ()=>{
+    haptic('light');
+    const c = S.streak.count;
+    toast(c === 0
+      ? `Серия дней. Заходи каждый день — 7 дней подряд дают бонусный глубокий разбор. Пропуск обнуляет счёт, страховка за ✧${FREEZE_COST} спасает один раз.`
+      : `Серия — ${c} ${plural(c,'день','дня','дней')} подряд, рекорд ${S.streak.best}. До бонусного разбора осталось ${Math.max(0, 7-c)}. Пропустишь день — счёт обнулится, страховка за ✧${FREEZE_COST} спасает один раз.`,
+      '🔥');
+  };
+
+  const ring = document.getElementById('lvlRing');
+  if(ring) ring.onclick = ()=>{
+    haptic('light');
+    const L = levelInfo();
+    toast(L.next
+      ? `Уровень ${L.num} — «${L.name}». XP капает за разборы и задания дня. До «${L.next.n}» осталось ${L.need} XP.`
+      : `Уровень ${L.num} — «${L.name}». Это последняя ступень: ${S.xp} XP.`,
+      '✦');
+  };
 
   if(S.view) return wireOracle();
   if(S.tab==='today') wireToday();
@@ -2137,7 +2297,7 @@ function wireProfile(){
   });
   const inv = document.getElementById('invite');
   if(inv) inv.onclick = ()=>{
-    const link = `https://t.me/oraculum_bot?start=ref_${hash(S.name+S.birth).toString(36)}`;
+    const link = `https://t.me/${BOT}?start=ref_${hash(S.name+S.birth).toString(36)}`;
     const text = `${S.name} зовёт тебя к оракулу. Мне уже посчитали число пути ${lifePath(S.birth)} — попробуй: ${link}`;
     navigator.clipboard?.writeText(text).catch(()=>{});
     S.invites++; save();
@@ -2146,10 +2306,42 @@ function wireProfile(){
   };
   const un = document.getElementById('unsub');
   if(un) un.onclick = ()=>{ S.sub=false; S.subPlan=''; save(); render(); toast('Подписка отключена (демо)','·'); };
+  /* Три вида отдачи подряд: на некоторых сборках Android срабатывает только
+     notificationOccurred, а impactOccurred молчит — так это станет видно. */
+  const ht = document.getElementById('hapticTest');
+  if(ht) ht.onclick = ()=>{
+    if(!IN_TG) return toast('Вибрация работает только внутри Telegram','·');
+    if(!TG_CAN.haptic) return toast('Клиент Telegram старее 6.1 — вибрация недоступна','·');
+    haptic('light');
+    setTimeout(()=>haptic('heavy'), 220);
+    setTimeout(()=>haptic('ok'), 480);
+    toast('Отправлено три сигнала. Если тишина — включи «Вибрация при касании» в настройках телефона','·');
+  };
+
   const rs = document.getElementById('reset');
   if(rs) rs.onclick = ()=>{
     modalReward({icon:'⟲', title:'Сбросить профиль?', text:'Все данные демо — уровень, серия, коллекция и история — будут удалены.', btn:'Сбросить', cancel:'Отмена', onOk:()=>resetAll()});
   };
+}
+
+/* Клавиатура в Telegram WebView на Android не закрывается сама: набрав вопрос,
+   пользователь остаётся с клавиатурой поверх веера карт, пока не свайпнет вниз.
+   У textarea штатной кнопки «готово» нет — Enter вставляет перенос строки,
+   который в вопросе из одной фразы не нужен. Поэтому здесь Enter означает
+   «закончил»: перенос не вставляется, фокус снимается, клавиатура уезжает.
+   Shift+Enter оставлен тем, кому действительно нужен многострочный текст. */
+function wireEnterDone(el){
+  if(!el) return;
+  el.setAttribute('enterkeyhint','done');
+  el.addEventListener('keydown', e=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); el.blur(); }
+  });
+}
+/* Снять фокус перед запуском разбора: иначе клавиатура закрывает и текст,
+   и индикатор загрузки — то есть ровно то, на что человек только что нажал. */
+function blurActive(){
+  const a = document.activeElement;
+  if(a && typeof a.blur === 'function' && /^(INPUT|TEXTAREA)$/.test(a.tagName)) a.blur();
 }
 
 /* ============================= ОРАКУЛЫ: ЛОГИКА =========================== */
@@ -2157,10 +2349,17 @@ let T = null;   // состояние расклада таро
 
 function wireOracle(){
   const v = S.view;
+  ['tarotQ','compQ','matchName'].forEach(id => wireEnterDone(document.getElementById(id)));
   if(v==='astro') document.getElementById('runAstro').onclick = runAstro;
   if(v==='numero') document.getElementById('runNumero').onclick = runNumero;
   if(v==='companion') document.getElementById('runComp').onclick = runCompanion;
-  if(v==='match') document.getElementById('runMatch').onclick = runMatch;
+  if(v==='match'){
+    document.getElementById('runMatch').onclick = runMatch;
+    /* Пустой обработчик: сама подписка нужна, чтобы список дней подрезался под
+       выбранный месяц. Состояние здесь не пишем — дата второго человека живёт
+       только до нажатия кнопки и в S не сохраняется. */
+    wireDateSelects('matchDate', ()=>{});
+  }
   if(v==='tarot'){ initTarot(); }
 }
 
@@ -2250,6 +2449,7 @@ function deepSectionUnlocked(kind, ctx){
 }
 
 async function output(kind, ctx, eyebrow, title, btn){
+  blurActive();                    // клавиатура не должна закрывать сам разбор
   const box = document.getElementById('out');
   if(btn) btn.disabled = true;
   box.innerHTML = loading(kind==='astro'?'Обсерватория считывает положение светил'
@@ -2301,10 +2501,11 @@ async function runCompanion(){
   await output('companion', baseCtx({q}), 'компаньон', 'Спокойный разбор', btn);
 }
 async function runMatch(){
-  const d2 = document.getElementById('matchDate').value;
-  if(!d2) return toast('Укажи дату второго человека','·');
+  const d2 = readDateSelects('matchDate');
+  if(!d2) return toast('Укажи дату второго человека полностью','·');
   if(!gate()) return;
   const name2 = cleanName(document.getElementById('matchName').value) || 'второй человек';
+  blurActive();                    // см. output(): убираем клавиатуру перед выводом
   const btn = document.getElementById('runMatch'); btn.disabled = true;
   const box = document.getElementById('out');
   box.innerHTML = loading('Сводим два узора');
@@ -2411,7 +2612,7 @@ async function readTarot(){
 
 /* --------------------------------- ШЕРИНГ -------------------------------- */
 function share(title, paras){
-  const txt = `🔮 ${title}\n\n${paras.join('\n\n').replace(/<[^>]+>/g,'')}\n\nМой оракул: https://t.me/oraculum_bot`;
+  const txt = `🔮 ${title}\n\n${paras.join('\n\n').replace(/<[^>]+>/g,'')}\n\nМой оракул: https://t.me/${BOT}`;
   if(navigator.share){ navigator.share({title:'Oraculum', text:txt}).catch(()=>{}); }
   else { navigator.clipboard?.writeText(txt).catch(()=>{}); }
   /* Награда не чаще раза в сутки: без лимита кнопка «Поделиться» превращается
