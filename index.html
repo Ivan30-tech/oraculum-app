@@ -28,6 +28,10 @@
   --brass:#c9a24b; --brass-soft:#8a7238; --gold:#e8c876; --gold-hi:#f8e6b0;
   --teal:#5a9c96; --crimson:#c1584c; --wine:#4a1f2c; --wine-2:#1c0d16;
   --violet:#6d5b9e; --rose:#c77f8f;
+  /* Цвет знаков зодиака. Лиловый выбран не случайно: именно так они выглядели
+     на аватаре бота, и именно этот вид утверждён. Заодно это разводит две
+     системы символов — зодиак лиловый, арканы таро золотые. */
+  --zodiac:#a99bdb;
   --ok:#6fbf8e;
   --radius:18px; --radius-sm:12px;
   --shadow:0 10px 30px rgba(0,0,0,.5);
@@ -106,7 +110,7 @@ button{font-family:inherit; color:inherit;}
   text-transform:uppercase; color:var(--dim-2); margin-bottom:7px;
 }
 /* Cormorant по умолчанию даёт минускульные цифры — в цифровых показателях они читаются хуже */
-h1.title,.card-t,.mini .mv,.instant .iv,.num-circle,.sheet h2,.seal-core,.wheel-sign,.tfront .nm
+h1.title,.card-t,.mini .mv,.instant .iv,.num-circle,.sheet h2,.seal-core,.tfront .nm
   {font-variant-numeric:lining-nums; font-feature-settings:"lnum" 1;}
 h1.title{font-family:'Cormorant Garamond',serif; font-weight:600; font-size:27px; line-height:1.14; margin-bottom:6px;}
 h1.title em{font-style:normal; color:var(--gold);}
@@ -252,7 +256,9 @@ textarea{resize:none; min-height:66px;}
   filter:drop-shadow(0 0 6px rgba(232,200,118,.5)); transition:stroke-dashoffset 1.1s cubic-bezier(.2,.8,.2,1);}
 .wheel-marker{fill:var(--gold); filter:drop-shadow(0 0 6px rgba(232,200,118,.9));
   transform-origin:90px 90px; transition:transform 1.2s cubic-bezier(.2,.8,.2,1);}
-.wheel-sign{font-family:'Cormorant Garamond',serif; font-size:34px; fill:var(--gold-hi); text-anchor:middle;}
+/* Правило .wheel-sign удалено вместе с разметкой: знак в центре колеса больше
+   не текст, а контур (см. ZGLYPH и signPath) — системный шрифт подменял его
+   цветным эмодзи. */
 .wheel-cap{font-family:'JetBrains Mono',monospace; font-size:9px; fill:var(--dim-2); text-anchor:middle; letter-spacing:.1em;}
 
 /* ============ tarot ============ */
@@ -833,8 +839,83 @@ const ZODIAC = [
   {n:'Скорпион',s:'♏', from:[10,23], to:[11,21], el:'water'},
   {n:'Стрелец', s:'♐', from:[11,22], to:[12,21], el:'fire'},
 ];
-/* U+FE0E — селектор текстового начертания: не даёт системе подменять знаки эмодзи */
-ZODIAC.forEach(z=>{ z.s += '︎'; });
+/* ==================== ЗНАКИ ЗОДИАКА КОНТУРАМИ ==============================
+   Поле s (символ ♈…♓) оставлено для мест, где текст и должен быть текстом:
+   строка «Поделиться», превью пуша, буфер обмена. В интерфейс он больше
+   не попадает, и вот почему.
+
+   Раньше символ выводился текстом, а от подмены на цветной эмодзи защищал
+   селектор текстового начертания U+FE0E. На живом устройстве (Android, Xiaomi)
+   выяснилось, что защита не работает: система всё равно подставляет свой
+   эмодзи-шрифт, и вместо тонкого золотого знака в интерфейсе появляются
+   лиловые квадратные плашки — в колесе астролога, в справочнике, в профиле,
+   на печати посвящения. Одинаково во всех двенадцати местах вывода.
+
+   Полагаться на системный шрифт в оформлении нельзя в принципе: он разный на
+   каждом телефоне и меняется с обновлением прошивки. Поэтому знаки нарисованы
+   контурами — ровно как 22 аркана в GLYPHS. Сетка 24×24, обводка currentColor,
+   поэтому цвет наследуется от родителя и знак везде совпадает с окружением. */
+const ZGLYPH = {
+  'Овен':    '<path d="M7.5 13C5.5 10 6.5 5 9.5 5c2 0 2.5 2.2 2.5 4.2V20M16.5 13c2-3 1-8-2-8-2 0-2.5 2.2-2.5 4.2"/>',
+  'Телец':   '<circle cx="12" cy="15.2" r="5"/><path d="M6.6 4.6c0 5 10.8 5 10.8 0"/>',
+  'Близнецы':'<path d="M7 4.5h10M7 19.5h10M9.6 4.5v15M14.4 4.5v15"/>',
+  /* Рак — «69». Ключевое: каждая половина рисуется ОДНОЙ непрерывной линией,
+     где хвост входит в верх петли и замыкает её, — как пишется цифра 6.
+     Двух предыдущих попыток не хватило именно из-за этого: там были отдельный
+     круг и отдельная дуга рядом, и знак читался как «круг с петлёй сбоку».
+     Вторая половина — та же кривая, повёрнутая на 180° вокруг центра сетки:
+     так «девятка» получается точной копией «шестёрки», а не подгонкой на глаз. */
+  'Рак':     '<path d="M2 12C3.2 6.3 8 3.4 14.25 6.95A3.6 3.6 0 1 1 13.42 8.27"/>'
+           + '<path d="M2 12C3.2 6.3 8 3.4 14.25 6.95A3.6 3.6 0 1 1 13.42 8.27" transform="rotate(180 12 12)"/>',
+  'Лев':     '<circle cx="7.8" cy="16" r="3.2"/><path d="M10.7 14.6c1.4-4.4-1-8.4 2.4-9.4 2.9-.8 4.4 2.4 2.7 4.6-1.6 2-1.2 4.8 1.4 6.2 1.5.8 2 2.2 1 3.4"/>',
+  'Дева':    '<path d="M4 6.5v11M4 8.2C4 6 7.4 6 7.4 8.2v9.3M7.4 8.2C7.4 6 10.8 6 10.8 8.2v6.4c0 3 3 4 5 2M13.2 12.4c3.6-.4 5.6 2.6 3.8 5.4"/>',
+  /* Весы: нижняя черта во всю ширину, верхняя с полукруглым подъёмом по центру.
+     В первой редакции обе линии стояли слишком близко и дуга читалась как
+     отдельный бугорок над коротким штрихом. */
+  'Весы':    '<path d="M3 18.5h18M3 13.6h5a4 4 0 0 1 8 0h5"/>',
+  /* Скорпион: те же три ножки с арками, что у Девы, но третья уходит в стрелу
+     вверх-вправо. В первой редакции ножек было четыре — знак читался забором. */
+  'Скорпион':'<path d="M4 7.5v10.5M4 9.2C4 7 7.6 7 7.6 9.2v8.8M7.6 9.2C7.6 7 11.2 7 11.2 9.2v8.8l6.8-7M14.2 11.2h4v4"/>',
+  'Стрелец': '<path d="M5.5 18.5L18.5 5.5M12.5 5.5h6v6M9 11l4.4 4.4"/>',
+  /* Козерог: «n» с ножкой, переходящей в петлю-хвост. Прежний вариант рисовал
+     одну сплошную завитушку и на знак не походил вовсе. */
+  'Козерог': '<path d="M5 17.5V9.6C5 6.9 9 6.9 9 9.6v5.2c0 3 3.2 4.4 5.6 2.8 2.9-1.9 2.4-6-.7-6.5-1.4-.2-2.3 1-1.7 2.2"/>',
+  'Водолей': '<path d="M4 10.4l4-3 4 3 4-3 4 3M4 16.4l4-3 4 3 4-3 4 3"/>',
+  'Рыбы':    '<path d="M7.2 4c-4 4-4 12 0 16M16.8 4c4 4 4 12 0 16M4 12h16"/>',
+};
+
+/* size — сторона иконки в пикселях. Обводка нарочно не масштабируется линейно:
+   на мелком размере тонкая линия исчезает, поэтому чуть толще. */
+function signIcon(z, size, extra){
+  const g = z && ZGLYPH[z.n];
+  if(!g) return '';
+  const w = size <= 20 ? 1.9 : size <= 30 ? 1.7 : 1.5;
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none"
+    stroke="var(--zodiac)" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"
+    style="vertical-align:-.14em; flex:none${extra?';'+extra:''}">${g}</svg>`;
+}
+
+/* Строка «знак · стихия · число пути» под выбором даты в профиле. Вынесена в
+   функцию, потому что собирается в двух местах: при отрисовке экрана и при
+   живом обновлении после смены даты. Пока это были две копии строки, они
+   разъезжались бы при любой правке формата. */
+function birthEchoHTML(birth){
+  const z = zodiac(birth);
+  if(!z) return 'не указана';
+  return `${signIcon(z, 15)} ${z.n} · ${ELEMENT[z.el].n} · число пути ${lifePath(birth)}`;
+}
+
+/* Для вставки внутрь уже открытого <svg> (колесо астролога, печать посвящения):
+   вложенный <svg> там сработал бы не везде, а <g> с translate/scale — всегда.
+   Сетка знака 24×24, поэтому масштаб = нужный размер / 24. */
+function signPath(z, cx, cy, size, color, opacity){
+  const g = z && ZGLYPH[z.n];
+  if(!g) return '';
+  const k = size/24;
+  return `<g transform="translate(${(cx-size/2).toFixed(2)} ${(cy-size/2).toFixed(2)}) scale(${k.toFixed(4)})"
+    fill="none" stroke="${color||'var(--zodiac)'}" stroke-width="${(1.5/k).toFixed(2)}"
+    stroke-linecap="round" stroke-linejoin="round"${opacity?` opacity="${opacity}"`:''}>${g}</g>`;
+}
 
 function zodiac(dateStr){
   if(!dateStr) return null;
@@ -1353,18 +1434,123 @@ function synthMatch(ctx){
 }
 
 /* ---------------- премиальный «глубокий разбор» (teaser) ---------------- */
-function deepBlock(kind, ctx){
-  const r = rng(`deep|${kind}|${ctx.name}|${ctx.day}|${ctx.q||''}`);
-  const areas = [
-    ['Транзиты недели','три окна, когда решение проходит легче всего, с точностью до дня'],
-    ['Карта повторяющихся сценариев','что именно ты воспроизводишь в этой теме последние годы'],
-    ['Совместимость с ключевыми людьми','по датам рождения — где ресурс, а где утечка'],
-    ['Финансовый ритм месяца','когда просить, когда вкладывать, когда молчать'],
-    ['Разбор страха под вопросом','настоящая причина, а не та, что называется первой'],
-    ['План на 21 день','пошагово, с проверкой на каждой седьмице'],
+/* ==========================================================================
+   ГЛУБОКИЙ РАЗБОР
+   Раньше здесь выдавались четыре заголовка вида «План на 21 день — пошагово,
+   с проверкой на каждой седьмице», а у подписчика из них лишь снималась приписка
+   «доступно с подпиской». То есть человек платил 399 ⭐ и получал оглавление:
+   ни одного шага, ни одной даты, ни одного вывода. Карты расклада на текст не
+   влияли вовсе — при полностью разных раскладах он совпадал дословно.
+   По правилам проекта обещанная механика обязана работать, поэтому разделы
+   теперь собираются из того же материала, что и сам разбор: карт расклада,
+   знака, числа пути и выбранного фокуса.
+   ========================================================================== */
+
+/* Второй шаг плана — конкретное действие под выбранный фокус. Формулировки
+   намеренно проверяемые: «подними цену одному клиенту», а не «поработай над
+   самооценкой». Невыполнимый шаг не отличить от невыполненного. */
+const DEEP_W2 = {
+  love:[ 'назначь один разговор, который откладываешь, и назови в нём одно своё желание прямо',
+         'перестань считывать настроение другого по мелочам — спроси словами, один раз',
+         'скажи вслух, чего ты ждёшь от этих отношений в ближайший месяц, без «наверное»'],
+  money:[ 'назови свою цену одному новому человеку и не снижай её первым',
+          'закрой дело, которое тянется дольше месяца, — пусть даже отказом',
+          'посчитай, сколько часов уходит на то, что не приносит денег, и урежь вдвое'],
+  path:[ 'сделай один необратимый шаг: письмо, заявка, разговор — то, что нельзя отменить молча',
+         'вычеркни два варианта, чтобы остался один живой',
+         'поставь решению дату в календаре и скажи о ней одному человеку'],
+  self:[ 'убери из недели одно дело целиком, не перенося его на потом',
+         'выдели два часа без пользы и не отчитывайся за них ни перед кем',
+         'запиши три вещи, которые уже получились, и перечитай их в худший день'],
+};
+const DEEP_CHECK = [
+  'через три недели перечитай этот разбор: сработало то, что ты сделал, а не то, что понял',
+  'критерий простой — внутреннего спора о том же самом стало меньше',
+  'если к концу срока вопрос звучит иначе, чем сейчас, движение было',
+  'засчитывается только то, что заметил кто-то кроме тебя',
+];
+const DEEP_LOOP = [
+  'Этот круг замыкается не событиями, а твоей реакцией на них: меняется декорация, реплика остаётся прежней.',
+  'Сценарий держится на одной привычке — объяснять себе, почему сейчас неподходящий момент.',
+  'Повтор виден по одному признаку: ты снова обсуждаешь это вместо того, чтобы делать.',
+  'Ты возвращаешься сюда, потому что прошлый выход был закрыт не решением, а усталостью.',
+];
+
+function cardInfo(c){
+  const d = c && DECK_BY[c.key];
+  return d ? {num:d[0], name:d[1], kw:d[2], adv:d[3], rev:!!c.rev} : null;
+}
+
+/* Возвращает разделы как {t, body}. Сид включает карты расклада — раньше их не
+   было, и глубокий разбор не отличался между раскладами. */
+function deepSections(kind, ctx){
+  const cards = ctx.cards || [];
+  const r = rng(`deep|${kind}|${ctx.name}|${ctx.birth}|${ctx.day}|${ctx.q||''}|${cards.map(c=>c.key+c.rev).join(',')}`);
+  const f = focusInfo(), L = signLore(ctx.z), num = numInfo(ctx.lp);
+  const situation = cardInfo(cards[0]), challenge = cardInfo(cards[1]), advice = cardInfo(cards[2]);
+  const nm = ctx.name;
+
+  /* --- 1. Страх под вопросом --- */
+  const fearSrc = challenge
+    ? `<b>«${challenge.name}»</b> в позиции вызова говорит о том, что тебя держит ${challenge.kw}.`
+    : `Ты объясняешь заминку внешними причинами, но держит тебя ${f.risk[0]}.`;
+  /* Знак не склоняем: родительный падеж в русском у знаков нерегулярный
+     (Близнецы, Весы, Рыбы не подчиняются одному правилу), а «как у рака» ещё и
+     читается как болезнь. Оборот в скобках обходит склонение целиком. */
+  const fear = `${fearSrc} ${challenge && challenge.rev
+      ? 'Перевёрнутое положение добавляет важное: тема уже назрела и признаётся неохотно — значит, сопротивление сильнее обычного.'
+      : 'Названный вслух, этот страх обычно оказывается меньше, чем ощущался.'}`
+    + (L ? ` В твоём знаке (${ctx.z.n}) это ложится на привычку ${L.weak}.` : '')
+    + ` Настоящая причина здесь не «${pick(f.risk,r)}» — это следствие. Причина в том, что цена бездействия пока кажется ниже цены шага.`;
+
+  /* --- 2. План на 21 день ---
+     Шаг недели берётся из FOCUS.adv, а не из совета карты: советы в колоде
+     сформулированы по-разному, и половина из них — утверждения («всё для шага
+     уже есть»), а не действия. Планом такое быть не может. Карта при этом
+     остаётся в тексте — как обоснование шага, а не как сам шаг. */
+  const cap = s => s[0].toUpperCase() + s.slice(1);
+  /* Два совета фокуса выбираются без возврата и разводятся по разделам: в пуле
+     всего три записи, и два независимых pick() регулярно давали одну и ту же
+     фразу дважды в одном разборе — в плане и в сценарии. */
+  const [advA, advB] = pickN(f.adv, 2, r);
+  const w1 = advA;
+  const w2 = pick(DEEP_W2[S.focus] || DEEP_W2.path, r);
+  const w3 = num.w;
+  const chk = pick(DEEP_CHECK, r);     // одним вызовом: pick дважды подряд брал
+                                       // первую букву из одной строки, а остаток
+                                       // из другой — получалось «Зерез три недели»
+  const plan = `
+    <p><b>Неделя 1.</b> ${cap(w1)}. Один раз, без подготовки и без идеальной формулировки.${
+      advice ? ` Карта совета «${advice.name}» о том же: ${advice.adv}.` : ''}</p>
+    <p><b>Неделя 2.</b> ${cap(w2)}.</p>
+    <p><b>Неделя 3.</b> ${cap(w3)} — на третьей неделе это перестаёт быть теорией.</p>
+    <p><b>Проверка.</b> ${cap(chk)}.</p>`;
+
+  /* --- 3. Повторяющийся сценарий --- */
+  const loop = `${pick(DEEP_LOOP,r)} `
+    + `Твоё число пути ${ctx.lp} («${num.t}») возвращает тебя к одному навыку: ${num.w}. `
+    + (situation ? `Карта ситуации «${situation.name}» показывает, на какой ноте круг начинается: ${situation.kw}. ` : '')
+    + `${nm}, здесь помогает не сила воли, а перемена шага: ${advB}.`;
+
+  /* --- 4. Окна недели ---
+     Формулировка честная: это ритм, посчитанный по дате рождения и числу пути,
+     а не положение планет. Прежний заголовок «Транзиты недели» обещал эфемериды,
+     которых в приложении нет и не планируется без бэкенда. */
+  const DAYS = ['понедельник','вторник','среду','четверг','пятницу','субботу','воскресенье'];
+  const SLOT = ['до 11:00','с 12 до 15','после 16:00','ближе к вечеру'];
+  const picked = pickN(DAYS, 3, r), slots = pickN(SLOT, 3, r);
+  const windows = `
+    <p>Ритм недели посчитан по твоей дате и числу пути — это не положение планет, а твой личный график нагрузки.</p>
+    <p><b>Разговор и просьбы</b> — в ${picked[0]}, ${slots[0]}.</p>
+    <p><b>Решение и подпись</b> — в ${picked[1]}, ${slots[1]}.</p>
+    <p><b>Ничего не начинать</b> — в ${picked[2]}: этот день у тебя уходит на восстановление, что бы ты о себе ни думал.</p>`;
+
+  return [
+    {t:'Страх под вопросом', body:`<p>${fear}</p>`},
+    {t:'План на 21 день',     body:plan},
+    {t:'Повторяющийся сценарий', body:`<p>${loop}</p>`},
+    {t:'Окна недели',         body:windows},
   ];
-  const items = pickN(areas, 4, r);
-  return items.map(([t,d])=>`<b>${t}.</b> ${d[0].toUpperCase()+d.slice(1)} — ${pick(['раскрывается в полной версии','входит в глубокий разбор','доступно с подпиской'],r)}.`);
 }
 
 /* ------------------------------ вызов «ИИ» ------------------------------ */
@@ -1573,9 +1759,12 @@ function sealSVG(sym){
     const a=i*15*Math.PI/180, r1=i%2?84:78, r2=90;
     return `<line x1="${(100+r1*Math.sin(a)).toFixed(1)}" y1="${(100-r1*Math.cos(a)).toFixed(1)}" x2="${(100+r2*Math.sin(a)).toFixed(1)}" y2="${(100-r2*Math.cos(a)).toFixed(1)}" stroke="#8a7238" stroke-width="1"/>`;
   }).join('');
-  const glyphs = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'].map(g=>g+'︎').map((g,i)=>{
+  /* Знаки контурами, а не текстом: системный эмодзи-шрифт Android подменял их
+     лиловыми плашками прямо на первом экране онбординга (см. ZGLYPH). */
+  const order = ['Овен','Телец','Близнецы','Рак','Лев','Дева','Весы','Скорпион','Стрелец','Козерог','Водолей','Рыбы'];
+  const glyphs = order.map((n,i)=>{
     const a=i*30*Math.PI/180, R=64;
-    return `<text x="${(100+R*Math.sin(a)).toFixed(1)}" y="${(100-R*Math.cos(a)+5).toFixed(1)}" font-size="13" fill="#c9a24b" opacity=".75" text-anchor="middle" font-family="serif">${g}</text>`;
+    return signPath({n}, 100+R*Math.sin(a), 100-R*Math.cos(a), 15, 'var(--zodiac)', '.9');
   }).join('');
   return `<svg viewBox="0 0 200 200">
     <g class="ring-out">
@@ -1713,7 +1902,7 @@ function obView(){
       ${dateSelects('obDate', S.birth)}
       <div id="obDateHint">${z ? `
         <div class="mini-grid">
-          <div class="mini"><div class="ml">Знак</div><div class="mv">${z.s} ${z.n}</div><div class="mx">${ELEMENT[z.el].n}</div></div>
+          <div class="mini"><div class="ml">Знак</div><div class="mv">${signIcon(z, 20)} ${z.n}</div><div class="mx">${ELEMENT[z.el].n}</div></div>
           <div class="mini"><div class="ml">Число пути</div><div class="mv">${lp}</div><div class="mx">${numInfo(lp).t}</div></div>
         </div>
         ${signLore(z) ? instantCard(`Знак · ${z.n}`, z.n, `${signLore(z).core[0].toUpperCase()+signLore(z).core.slice(1)}.`) : ''}
@@ -1811,7 +2000,7 @@ function todayView(){
   return `
   <div class="eyebrow">${hello}, ${esc(S.name)} · ${fmtDate(new Date())}</div>
   <h1 class="title">Энергия дня — <em>${en}</em> из 100</h1>
-  <p class="sub">${z.s} ${z.n} · число пути ${lp} · фокус: ${f.ic} ${f.n}</p>
+  <p class="sub">${signIcon(z, 16)} ${z.n} · число пути ${lp} · фокус: ${f.ic} ${f.n}</p>
 
   <div class="card glow">
     <div class="card-h">
@@ -1978,7 +2167,7 @@ function astroView(){
           return `<line class="wheel-tick" x1="${(90+56*Math.sin(a)).toFixed(1)}" y1="${(90-56*Math.cos(a)).toFixed(1)}" x2="${(90+74*Math.sin(a)).toFixed(1)}" y2="${(90-74*Math.cos(a)).toFixed(1)}"/>`;
         }).join('')}
         <circle class="wheel-arc" cx="90" cy="90" r="74" stroke-dasharray="${circ}" stroke-dashoffset="${circ*(1-(idx+1)/12)}" transform="rotate(-90 90 90)"/>
-        <text class="wheel-sign" x="90" y="96">${z.s}</text>
+        ${signPath(z, 90, 88, 40)}
         <text class="wheel-cap" x="90" y="122">${z.n.toUpperCase()} · ${ELEMENT[z.el].n.toUpperCase()}</text>
         <circle class="wheel-marker" cx="90" cy="16" r="4" style="transform:rotate(${idx*30}deg)"/>
       </svg>
@@ -2103,7 +2292,7 @@ function zodiacIndexHTML(){
     const L = ZODIAC_LORE[z.n];
     const own = mine && mine.n===z.n;
     return `<button class="oracle" data-sign="${esc(z.n)}">
-      <div class="av"><span style="font-size:22px; color:var(--gold-hi)">${z.s}</span></div>
+      <div class="av">${signIcon(z, 24)}</div>
       <div style="flex:1; min-width:0">
         <div class="nm">${z.n}${own?' <span class="tag">твой</span>':''}</div>
         <div class="ds">${ELEMENT[z.el].n} · ${md(z.from)} — ${md(z.to)}${L?` · ${L.core.split(':')[0]}`:''}</div>
@@ -2146,7 +2335,7 @@ function signView(){
           return `<line class="wheel-tick" x1="${(90+56*Math.sin(a)).toFixed(1)}" y1="${(90-56*Math.cos(a)).toFixed(1)}" x2="${(90+74*Math.sin(a)).toFixed(1)}" y2="${(90-74*Math.cos(a)).toFixed(1)}"/>`;
         }).join('')}
         <circle class="wheel-arc" cx="90" cy="90" r="74" stroke-dasharray="${circ}" stroke-dashoffset="${circ*(1-(idx+1)/12)}" transform="rotate(-90 90 90)"/>
-        <text class="wheel-sign" x="90" y="96">${z.s}</text>
+        ${signPath(z, 90, 88, 40)}
         <text class="wheel-cap" x="90" y="122">${z.n.toUpperCase()} · ${el.n.toUpperCase()}</text>
         <circle class="wheel-marker" cx="90" cy="16" r="4" style="transform:rotate(${idx*30}deg)"/>
       </svg>
@@ -2266,7 +2455,7 @@ function profileView(){
   return `
   <div class="eyebrow">Личный кабинет</div>
   <h1 class="title">${esc(S.name)}, уровень ${L.num}<br><em>${L.name}</em></h1>
-  <p class="sub">${z.s} ${z.n} · ${ELEMENT[z.el].n} · число пути ${lp} · фокус ${focusInfo().n.toLowerCase()}</p>
+  <p class="sub">${signIcon(z, 16)} ${z.n} · ${ELEMENT[z.el].n} · число пути ${lp} · фокус ${focusInfo().n.toLowerCase()}</p>
 
   <div class="card">
     <div class="bar"><i style="width:${L.pct}%"></i></div>
@@ -2289,7 +2478,7 @@ function profileView(){
          <button class="btn btn-ghost btn-sm" style="margin-top:11px" id="unsub">Отменить (демо)</button>`
       : `<div class="vlist" style="margin-bottom:12px">
            <div class="vrow"><span class="vi">✓</span><span>Неограниченные разборы у всех пяти оракулов</span></div>
-           <div class="vrow"><span class="vi">✓</span><span>Глубокие разборы: транзиты, сценарии, план на 21 день</span></div>
+           <div class="vrow"><span class="vi">✓</span><span>Глубокие разборы: страх под вопросом, план на 21 день, окна недели</span></div>
            <div class="vrow"><span class="vi">✓</span><span>Утренний прогноз приходит сам, до будильника</span></div>
          </div>
          <button class="btn btn-primary btn-sm" data-pay="1">Открыть тарифы · от 149 ⭐</button>`}
@@ -2332,7 +2521,7 @@ function profileView(){
       <label>Дата рождения</label>
       ${dateSelects('profileBirth', S.birth)}
       <div class="card-note" id="birthEcho">
-        ${S.birth ? `${zodiac(S.birth).s} ${zodiac(S.birth).n} · ${ELEMENT[zodiac(S.birth).el].n} · число пути ${lifePath(S.birth)}` : 'не указана'}
+        ${S.birth ? birthEchoHTML(S.birth) : 'не указана'}
       </div>
     </div>
 
@@ -2637,7 +2826,11 @@ function wireProfile(){
     S.birth = v; save();
     const z = zodiac(v);
     const echo = document.getElementById('birthEcho');
-    if(echo) echo.textContent = `${z.s} ${z.n} · ${ELEMENT[z.el].n} · число пути ${lifePath(v)}`;
+    /* innerHTML, а не textContent: строка содержит контурный знак, то есть нашу
+       собственную разметку. Данные пользователя сюда не попадают — только
+       результат расчёта по дате, — поэтому правило «innerHTML только для своей
+       разметки» не нарушается. */
+    if(echo) echo.innerHTML = birthEchoHTML(v);
     haptic('reveal');
     toast('Дата обновлена. Карта дня сменится завтра','✦');
   });
@@ -2751,22 +2944,30 @@ function baseCtx(extra){
   }, extra||{});
 }
 
+/* Один рендер разделов на все три состояния (подписка, разовое открытие, замок) —
+   иначе тексты в них разъезжаются, как это уже было с обещаниями paywall. */
+function deepBody(sections){
+  return sections.map(s=>`<p><b>${s.t}.</b></p>${s.body}`).join('');
+}
+
 function deepSection(kind, ctx){
-  const items = deepBlock(kind, ctx);
+  const S4 = deepSections(kind, ctx);
   if(isPremium()){
     return `<div class="card glow fade-in">
       <div class="card-h"><div class="card-t">Глубокий разбор</div><div class="card-note">PREMIUM</div></div>
-      <div class="reading">${items.map(i=>`<p>${i.replace(/ — (раскрывается в полной версии|входит в глубокий разбор|доступно с подпиской)\.$/,'.')}</p>`).join('')}</div>
+      <div class="reading">${deepBody(S4)}</div>
     </div>`;
   }
+  /* Открыт первый раздел целиком — не заголовок, а настоящий текст. Под замком
+     остальные три, и в подсказке названы именно они, без выдуманных пунктов. */
   return `<div class="card">
-    <div class="card-h"><div class="card-t">Глубокий разбор</div><div class="card-note">1 из 4 открыт</div></div>
-    <div class="reading">${items[0].replace(/ — (раскрывается в полной версии|входит в глубокий разбор|доступно с подпиской)\.$/,'.')}</div>
+    <div class="card-h"><div class="card-t">Глубокий разбор</div><div class="card-note">1 из ${S4.length} открыт</div></div>
+    <div class="reading"><p><b>${S4[0].t}.</b></p>${S4[0].body}</div>
     <div class="locked">
-      <div class="veil reading">${items.slice(1).map(i=>`<p>${i}</p>`).join('')}</div>
+      <div class="veil reading">${deepBody(S4.slice(1))}</div>
       <div class="lock-ui">
-        <div class="lt">Ещё 3 раздела — уже посчитаны для тебя</div>
-        <div class="ls">Транзиты недели, повторяющиеся сценарии, план на 21 день</div>
+        <div class="lt">Ещё ${S4.length-1} раздела — уже посчитаны по этому раскладу</div>
+        <div class="ls">${S4.slice(1).map(s=>s.t.toLowerCase()).join(', ')}</div>
         <button class="btn btn-primary btn-sm" style="width:100%; margin-bottom:8px" data-unlock="1">Открыть за ✧ ${SPARK_COST} искр</button>
         <button class="btn btn-ghost btn-sm" style="width:100%" data-pay="1">Или подписка · от 149 ⭐</button>
       </div>
@@ -2789,10 +2990,9 @@ function wireDeep(kind, ctx){
   document.querySelectorAll('[data-pay]').forEach(b=>b.onclick = ()=>openPaywall('plans'));
 }
 function deepSectionUnlocked(kind, ctx){
-  const items = deepBlock(kind, ctx);
   return `<div class="card glow fade-in">
     <div class="card-h"><div class="card-t">Глубокий разбор</div><div class="card-note">ОТКРЫТО</div></div>
-    <div class="reading">${items.map(i=>`<p>${i.replace(/ — (раскрывается в полной версии|входит в глубокий разбор|доступно с подпиской)\.$/,'.')}</p>`).join('')}</div>
+    <div class="reading">${deepBody(deepSections(kind, ctx))}</div>
     <div style="font-size:11.5px; color:var(--dim-2); margin-top:12px; line-height:1.5">
       В подписке такие разборы не расходуют искры и приходят каждое утро.</div>
   </div>`;
@@ -2835,7 +3035,7 @@ async function runAstro(){
   if(!gate()) return;
   const btn = document.getElementById('runAstro');
   const ctx = baseCtx();
-  await output('astro', ctx, `${ctx.z.s} ${ctx.z.n}`, `Прогноз на ${fmtDate(new Date())}`, btn);
+  await output('astro', ctx, `${signIcon(ctx.z, 14)} ${ctx.z.n}`, `Прогноз на ${fmtDate(new Date())}`, btn);
 }
 async function runNumero(){
   if(!gate()) return;
@@ -2869,7 +3069,7 @@ async function runMatch(){
       <div class="bar" style="margin:12px 0 0"><i style="width:${res.score}%"></i></div>
     </div>
     <div class="card fade-in"><div class="card-h"><div class="card-t">Разбор пары</div>
-      <div class="card-note">${ctx.z.s} + ${ctx.z2.s}</div></div>
+      <div class="card-note">${signIcon(ctx.z, 14)} + ${signIcon(ctx.z2, 14)}</div></div>
       <div class="reading" id="rd"></div></div>
     <div id="deep">${deepSection('match', ctx)}</div>
     <div class="row" style="margin-bottom:12px">
@@ -3018,7 +3218,10 @@ function openPaywall(reason){
     </div>
     <div class="vlist">
       <div class="vrow"><span class="vi">✓</span><span>Неограниченные разборы у всех пяти оракулов</span></div>
-      <div class="vrow"><span class="vi">✓</span><span>Глубокий разбор к каждому раскладу: транзиты, сценарии, план на 21 день</span></div>
+      <!-- Перечисляются ровно те разделы, которые возвращает deepSections(), и в
+           том же порядке. «Транзиты» отсюда убраны: эфемерид приложение не считает,
+           а обещать их — то же самое, что обещать скидку с несуществующей цены. -->
+      <div class="vrow"><span class="vi">✓</span><span>Глубокий разбор к каждому раскладу: страх под вопросом, план на 21 день, повторяющийся сценарий, окна недели</span></div>
       <div class="vrow"><span class="vi">✓</span><span>Утренний прогноз приходит в Telegram сам</span></div>
       <div class="vrow"><span class="vi">✓</span><span>Полная история и память оракула о твоих вопросах</span></div>
     </div>
