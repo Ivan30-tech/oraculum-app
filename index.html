@@ -750,10 +750,22 @@ function routeStart(){
   return p;
 }
 
+/* Два семейства тактильной отдачи в Telegram ведут себя по-разному, и это не
+   стилистика, а совместимость:
+     impactOccurred('light'|'medium'|'heavy'|'rigid'|'soft') — «удар»;
+     notificationOccurred('success'|'warning'|'error')       — «уведомление».
+   На части Android-сборок «удар» отображается в слишком короткую или нулевую
+   амплитуду и не ощущается вообще, тогда как «уведомление» срабатывает всегда.
+   Обнаружено на живом устройстве: из трёх карт расклада вибрация чувствовалась
+   только на третьей — там, где вместе с переворотом выдавалась награда через
+   notificationOccurred. Отсюда правило: моменты, которые ОБЯЗАНЫ ощущаться
+   (раскрытие карты, вытягивание из веера), идут через 'reveal' — уведомление.
+   Мелочь вроде навигации остаётся на 'удар': если она промолчит, ничего
+   не потеряно, а частые уведомления клиент начинает подавлять как спам. */
 function haptic(kind){
   if(!TG_CAN.haptic || !TG.HapticFeedback) return;
   try{
-    if(kind==='ok') TG.HapticFeedback.notificationOccurred('success');
+    if(kind==='ok' || kind==='reveal') TG.HapticFeedback.notificationOccurred('success');
     else if(kind==='warn') TG.HapticFeedback.notificationOccurred('warning');
     else TG.HapticFeedback.impactOccurred(kind||'light');
   }catch(e){}
@@ -2215,7 +2227,7 @@ function wireToday(){
     const el = document.getElementById('dailyCard');
     el.classList.add('flipped');
     S.daily.flipped = true; save();
-    haptic('medium');
+    haptic('reveal');           // как и в раскладе: раскрытие карты обязано ощущаться
     collectArcana(S.daily.key);
     const rar = rarityOf(S.daily.rarity);
     if(S.daily.rarity==='legend') unlockAch('legend');
@@ -2258,7 +2270,7 @@ function spinFortune(){
   const i = Math.floor(r()*sectors.length);
   const deg = 360*4 - (i*45 + 22.5);
   svg.style.transform = `rotate(${deg}deg)`;
-  haptic('medium');
+  haptic('reveal');             // запуск колеса — ощутимый момент, не «удар»
   S.fortune.date = todayKey(); save();
   setTimeout(()=>{
     const s = sectors[i];
@@ -2306,16 +2318,30 @@ function wireProfile(){
   };
   const un = document.getElementById('unsub');
   if(un) un.onclick = ()=>{ S.sub=false; S.subPlan=''; save(); render(); toast('Подписка отключена (демо)','·'); };
-  /* Три вида отдачи подряд: на некоторых сборках Android срабатывает только
-     notificationOccurred, а impactOccurred молчит — так это станет видно. */
+  /* Два семейства проверяются по отдельности и с большой паузой: в прежней версии
+     три сигнала шли через 220 мс и сливались в один, из-за чего нельзя было
+     понять, какой именно из них сработал. Подпись перед каждым сигналом говорит,
+     что сейчас ощущать, — так пользователь отвечает фактом, а не догадкой. */
   const ht = document.getElementById('hapticTest');
   if(ht) ht.onclick = ()=>{
     if(!IN_TG) return toast('Вибрация работает только внутри Telegram','·');
     if(!TG_CAN.haptic) return toast('Клиент Telegram старее 6.1 — вибрация недоступна','·');
-    haptic('light');
-    setTimeout(()=>haptic('heavy'), 220);
-    setTimeout(()=>haptic('ok'), 480);
-    toast('Отправлено три сигнала. Если тишина — включи «Вибрация при касании» в настройках телефона','·');
+    ht.disabled = true;
+    const steps = [
+      ['1 из 3 · «удар» слабый',  ()=>TG.HapticFeedback.impactOccurred('light')],
+      ['2 из 3 · «удар» сильный', ()=>TG.HapticFeedback.impactOccurred('heavy')],
+      ['3 из 3 · «уведомление»',  ()=>TG.HapticFeedback.notificationOccurred('success')],
+    ];
+    steps.forEach(([label, fire], k)=>{
+      setTimeout(()=>{
+        toast(label, '·');
+        try{ fire(); }catch(e){}
+        if(k === steps.length-1) setTimeout(()=>{
+          ht.disabled = false;
+          toast('Запомни, на каких номерах была вибрация','·');
+        }, 1400);
+      }, k*1600);
+    });
   };
 
   const rs = document.getElementById('reset');
@@ -2566,7 +2592,10 @@ function pickCard(i){
   if(T.picked.length>=3) return toast('Три карты уже вытянуты — переверни их','✦');
   if(T.picked.some(p=>p.i===i)) return;
   T.picked.push({i, key:T.order[i], rev:T.revs[i]});
-  haptic('light');
+  /* Вытянуть карту — главный жест приложения. Стоял 'light', то есть слабейший
+     «удар», который на Android не ощущается совсем (см. haptic): пользователь
+     решил, что отдачи нет вообще. 'reveal' — уведомление, оно срабатывает. */
+  haptic('reveal');
   renderFan(); renderSlots();
   const hint = document.getElementById('fanHint');
   hint.textContent = T.picked.length<3
@@ -2589,7 +2618,7 @@ function renderSlots(){
     if(T.flipped[i]) return;
     T.flipped[i] = true;
     el.classList.add('flipped');
-    haptic('medium');
+    haptic('reveal');           // раскрытие карты обязано ощущаться — см. haptic()
     collectArcana(T.picked[i].key);
     const allFlipped = T.flipped.every(Boolean) && T.picked.length===3;
     document.getElementById('readTarot').disabled = !allFlipped;
